@@ -55,37 +55,33 @@ window.onerror = function(msg, url, line) {
 
 <script>
 const CATALOGO_APP = {
-  AAA: {
+  aaa: {
     titolo: "Piano Servizio",
     percorsoCodice: "C:\\Applicativi\\Piano_Servizio",
-    fileHtml: "index.html",
-    fileDb: "Piano_Servizio_Condiviso.json"
+    fileHtml: "index.html"
   },
   veicoli: {
     titolo: "Guida Operativa veicoli",
     percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\veicoli",
-    fileHtml: "guida_interattiva_controlli_veicoli.html",
-    fileDb: "Formulari_Dogana_Chiasso_DB.json"
+    fileHtml: "guida_interattiva_controlli_veicoli.html"
   },
   yyyyyy: {
     titolo: "Rapportino",
     percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\rapp",
-    fileHtml: "rapportino.html",
-    fileDb: "rapportino_db.json"
+    fileHtml: "rapportino.html"
   },
   xxxx: {
     titolo: "Numerazione respingimenti",
     percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti",
-    fileHtml: "2 Modulo di respingimento.html",
-    fileDb: "respingimenti.xlsx"
+    fileHtml: "2 Modulo di respingimento.html"
   }
 };
 
-const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
+const rawParam = new URLSearchParams(location.search).get('app') || 'veicoli';
 const appKey = rawParam.trim().toLowerCase();
 const CFG = CATALOGO_APP[appKey];
 
-const DB_NAME = 'DualPathBootloaderDB';
+const DB_NAME = 'HtmlBootloaderDB';
 const STORE_NAME = 'handles';
 
 const uiTitle = document.getElementById('ui-title');
@@ -99,7 +95,7 @@ function logErr(msg) { logEl.textContent += msg + '\n'; }
 if (!CFG) {
   uiTitle.textContent = '❌ Applicativo non trovato';
   btnMain.style.display = 'none';
-  throw new Error('Chiave "' + appKey + '" non presente');
+  throw new Error('Chiave "' + appKey + '" non presente nel catalogo');
 }
 
 uiTitle.textContent = '🚀 ' + CFG.titolo;
@@ -112,6 +108,7 @@ function openIDB() {
     req.onerror = () => rej(req.error);
   });
 }
+
 async function getHandle(key) {
   try {
     const db = await openIDB();
@@ -124,6 +121,7 @@ async function getHandle(key) {
     return null;
   }
 }
+
 async function setHandle(key, handle) {
   const db = await openIDB();
   return new Promise((res, rej) => {
@@ -133,11 +131,15 @@ async function setHandle(key, handle) {
     tx.onerror = () => rej(tx.error);
   });
 }
+
 async function clearHandles() {
   const db = await openIDB();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  tx.objectStore(STORE_NAME).delete(appKey + '_code');
-  tx.objectStore(STORE_NAME).delete(appKey + '_db');
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).delete(appKey + '_code');
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
 }
 
 async function readCodeFile(codeDirHandle, relPath) {
@@ -157,21 +159,11 @@ async function startApp(codeDirHandle) {
 
     const permCode = await codeDirHandle.requestPermission({ mode: 'readwrite' });
     if (permCode !== 'granted') {
-      logErr('❌ Consenso negato. Clicca "Modifica file" nel messaggio di Edge.');
+      logErr('❌ Consenso negato. Clicca "Modifica file" o consenti la lettura nel messaggio del browser.');
       return;
     }
 
     window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
-
-    // Aggancia in automatico il file DB se è nella stessa cartella
-    const candidati = [CFG.fileDb, 'respingimenti.xlsx', 'database_respingimenti.json'];
-    for (const nomeFile of candidati) {
-      if (!nomeFile) continue;
-      try {
-        window.__BOOTLOADER_DB_HANDLE__ = await codeDirHandle.getFileHandle(nomeFile, { create: false });
-        break;
-      } catch (_) {}
-    }
 
     const rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
     const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
@@ -253,7 +245,7 @@ async function refreshUI() {
   if (codeHandle) {
     btnMain.className = 'btn btn-green';
     btnMain.textContent = '▶️ AVVIA ' + CFG.titolo.toUpperCase();
-    uiHint.textContent = 'Clicca il pulsante verde e conferma "Modifica file" nel messaggio di Edge.';
+    uiHint.textContent = 'Clicca il pulsante verde e conferma i permessi nel messaggio di Edge.';
     btnReset.style.display = 'inline-block';
     btnMain.onclick = () => startApp(codeHandle);
   } else {
@@ -284,4 +276,3 @@ refreshUI();
 </script>
 </body>
 </html>
-
