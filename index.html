@@ -1,1 +1,287 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avvio Applicativo</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0f172a; color: #f8fafc;
+      display: flex; align-items: center; justify-content: center;
+      height: 100vh; margin: 0;
+    }
+    .card {
+      background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+      padding: 32px; width: 480px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+      text-align: center;
+    }
+    h2 { margin: 0 0 22px 0; font-size: 22px; color: #38bdf8; }
+    .btn {
+      width: 100%; padding: 15px 16px; border: none; border-radius: 8px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    .btn-green { background: #16a34a; color: #fff; }
+    .btn-green:hover { background: #15803d; }
+    .btn-blue { background: #2563eb; color: #fff; }
+    .btn-blue:hover { background: #1d4ed8; }
+    .hint { font-size: 13px; color: #94a3b8; margin-top: 14px; line-height: 1.5; white-space: pre-line; }
+    .reset-link {
+      display: inline-block; margin-top: 16px; font-size: 12px;
+      color: #64748b; cursor: pointer; text-decoration: underline;
+    }
+    #log {
+      margin-top: 12px; font-family: monospace; font-size: 12px; text-align: left;
+      color: #fca5a5; white-space: pre-wrap; max-height: 150px; overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2 id="ui-title">🚀 Avvio Applicativo</h2>
+  <button id="btn-main" class="btn btn-blue">Caricamento...</button>
+  <div class="hint" id="ui-hint"></div>
+  <div id="log"></div>
+  <span class="reset-link" id="btn-reset" style="display:none;">⚙️ Riconfigura</span>
+</div>
+
+<script>
+window.onerror = function(msg, url, line) {
+  var log = document.getElementById('log');
+  if (log) log.textContent += '❌ ' + msg + ' (riga ' + line + ')\n';
+};
+</script>
+
+<script>
+const CATALOGO_APP = {
+  AAA: {
+    titolo: "Piano Servizio",
+    percorsoCodice: "C:\\Applicativi\\Piano_Servizio",
+    fileHtml: "index.html",
+    fileDb: "Piano_Servizio_Condiviso.json"
+  },
+  veicoli: {
+    titolo: "Guida Operativa veicoli",
+    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\veicoli",
+    fileHtml: "guida_operativa_controlli_veicoli_udsc_2026.html",
+    fileDb: "Formulari_Dogana_Chiasso_DB.json"
+  },
+  yyyyyy: {
+    titolo: "Rapportino",
+    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\rapp",
+    fileHtml: "rapportino.html",
+    fileDb: "rapportino_db.json"
+  },
+  xxxx: {
+    titolo: "Numerazione respingimenti",
+    percorsoCodice: "\\\\Vf00105a.adb.intra.admin.ch\\ezv_os$\\os\\0\\3\\2\\6\\5\\66632\\40 Tabelle_base\\Respingimenti",
+    fileHtml: "2 Modulo di respingimento.html",
+    fileDb: "respingimenti.xlsx"
+  }
+};
+
+const rawParam = new URLSearchParams(location.search).get('app') || 'turni';
+const appKey = rawParam.trim().toLowerCase();
+const CFG = CATALOGO_APP[appKey];
+
+const DB_NAME = 'DualPathBootloaderDB';
+const STORE_NAME = 'handles';
+
+const uiTitle = document.getElementById('ui-title');
+const uiHint = document.getElementById('ui-hint');
+const btnMain = document.getElementById('btn-main');
+const btnReset = document.getElementById('btn-reset');
+const logEl = document.getElementById('log');
+
+function logErr(msg) { logEl.textContent += msg + '\n'; }
+
+if (!CFG) {
+  uiTitle.textContent = '❌ Applicativo non trovato';
+  btnMain.style.display = 'none';
+  throw new Error('Chiave "' + appKey + '" non presente');
+}
+
+uiTitle.textContent = '🚀 ' + CFG.titolo;
+
+function openIDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE_NAME);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function getHandle(key) {
+  try {
+    const db = await openIDB();
+    return await new Promise(res => {
+      const req = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(key);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    });
+  } catch (_) {
+    return null;
+  }
+}
+async function setHandle(key, handle) {
+  const db = await openIDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(handle, key);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function clearHandles() {
+  const db = await openIDB();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).delete(appKey + '_code');
+  tx.objectStore(STORE_NAME).delete(appKey + '_db');
+}
+
+async function readCodeFile(codeDirHandle, relPath) {
+  const clean = decodeURIComponent(relPath.split('?')[0].split('#')[0]).replace(/^\.\//, '');
+  const parts = clean.split(/[/\\]/).filter(Boolean);
+  let curr = codeDirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    curr = await curr.getDirectoryHandle(parts[i]);
+  }
+  const fh = await curr.getFileHandle(parts[parts.length - 1]);
+  return await (await fh.getFile()).text();
+}
+
+async function startApp(codeDirHandle) {
+  try {
+    logEl.textContent = '';
+
+    const permCode = await codeDirHandle.requestPermission({ mode: 'readwrite' });
+    if (permCode !== 'granted') {
+      logErr('❌ Consenso negato. Clicca "Modifica file" nel messaggio di Edge.');
+      return;
+    }
+
+    window.__BOOTLOADER_DIR_HANDLE__ = codeDirHandle;
+
+    // Aggancia in automatico il file DB se è nella stessa cartella
+    const candidati = [CFG.fileDb, 'respingimenti.xlsx', 'database_respingimenti.json'];
+    for (const nomeFile of candidati) {
+      if (!nomeFile) continue;
+      try {
+        window.__BOOTLOADER_DB_HANDLE__ = await codeDirHandle.getFileHandle(nomeFile, { create: false });
+        break;
+      } catch (_) {}
+    }
+
+    const rawHtml = await readCodeFile(codeDirHandle, CFG.fileHtml);
+    const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+
+    const headNodes = Array.from(doc.head.querySelectorAll('link[rel="stylesheet"], style'));
+    document.head.innerHTML = '';
+    document.title = doc.title || CFG.titolo;
+
+    for (const node of headNodes) {
+      if (node.tagName === 'STYLE') {
+        const st = document.createElement('style');
+        st.textContent = node.textContent;
+        document.head.appendChild(st);
+      } else if (node.tagName === 'LINK') {
+        const href = node.getAttribute('href');
+        if (!href) continue;
+        if (href.startsWith('http://') || href.startsWith('https://') || href.startsWith('//')) {
+          const lnk = document.createElement('link');
+          lnk.rel = 'stylesheet';
+          lnk.href = href;
+          document.head.appendChild(lnk);
+        } else {
+          const cssText = await readCodeFile(codeDirHandle, href);
+          const st = document.createElement('style');
+          st.textContent = cssText + '\n/*# sourceURL=' + href.split('?')[0] + ' */';
+          document.head.appendChild(st);
+        }
+      }
+    }
+
+    const scripts = [
+      ...Array.from(doc.head.querySelectorAll('script')),
+      ...Array.from(doc.body.querySelectorAll('script'))
+    ];
+    doc.body.querySelectorAll('script').forEach(s => s.remove());
+    document.body.className = doc.body.className;
+    document.body.style.cssText = doc.body.style.cssText;
+    document.body.innerHTML = doc.body.innerHTML;
+
+    for (const oldScript of scripts) {
+      const src = oldScript.getAttribute('src');
+      const s = document.createElement('script');
+      if (oldScript.type) s.type = oldScript.type;
+      if (!src) {
+        s.textContent = oldScript.textContent;
+        document.body.appendChild(s);
+      } else if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+        await new Promise((res, rej) => {
+          s.src = src;
+          s.onload = res;
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      } else {
+        const cleanSrc = src.split('?')[0];
+        const jsCode = await readCodeFile(codeDirHandle, src);
+        s.textContent = jsCode + '\n//# sourceURL=' + cleanSrc;
+        document.body.appendChild(s);
+      }
+    }
+
+    const bodyOnload = doc.body.getAttribute('onload');
+    if (bodyOnload) {
+      try { new Function(bodyOnload)(); } catch (e) { console.error(e); }
+    }
+
+    document.dispatchEvent(new Event('DOMContentLoaded', { bubbles: true }));
+    window.dispatchEvent(new Event('load'));
+
+  } catch (err) {
+    logErr('❌ Errore durante l\'avvio: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function refreshUI() {
+  const codeHandle = await getHandle(appKey + '_code');
+
+  if (codeHandle) {
+    btnMain.className = 'btn btn-green';
+    btnMain.textContent = '▶️ AVVIA ' + CFG.titolo.toUpperCase();
+    uiHint.textContent = 'Clicca il pulsante verde e conferma "Modifica file" nel messaggio di Edge.';
+    btnReset.style.display = 'inline-block';
+    btnMain.onclick = () => startApp(codeHandle);
+  } else {
+    btnMain.className = 'btn btn-blue';
+    btnMain.textContent = '🔗 COLLEGA APPLICATIVO (1ª VOLTA)';
+    uiHint.textContent = 'Clicca il pulsante, premi Ctrl+V + Invio nella finestra\ne clicca "Seleziona cartella".';
+    btnReset.style.display = 'none';
+    btnMain.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(CFG.percorsoCodice).catch(() => {});
+        const h = await window.showDirectoryPicker({ mode: 'readwrite' });
+        await setHandle(appKey + '_code', h);
+        await refreshUI();
+        await startApp(h);
+      } catch (e) {
+        if (e.name !== 'AbortError') logErr('❌ ' + e.message);
+      }
+    };
+  }
+}
+
+btnReset.onclick = async () => {
+  await clearHandles();
+  await refreshUI();
+};
+
+refreshUI();
+</script>
+</body>
+</html>
 
